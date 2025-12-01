@@ -3,8 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    env_file:
-      - .env
+    container_name: netease-music-api
+    environment:
+      - TZ=Asia/Shanghai
+      - LEVEL=lossless
+      - MODE=api
     ports:
       - "5000:5000"
+    volumes:
+      # 挂载下载目录，防止容器重启文件丢失
+      - ./downloads:/app/downloads
+      # 挂载 cookie 文件，方便主机修改或更新
+      - ./cookie.txt:/app/cookie.txt
     restart: unless-stopped
