@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from urllib.parse import quote
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, send_file, render_template, Response
 
 try:
@@ -201,6 +202,79 @@ class MusicAPIService:
             self.logger.error(f"获取请求数据失败: {e}")
             return {}
 
+    def get_full_song_info_concurrent(self, music_id: int, level: str, cookies: Dict[str, str]) -> Dict[str, Any]:
+        """
+        并发获取歌曲详情、播放链接和歌词
+        """
+        results = {}
+
+        # 定义任务映射
+        tasks = {
+            'detail': lambda: self.netease_api.get_song_detail(music_id),
+            'url': lambda: self.netease_api.get_song_url(music_id, level, cookies),
+            'lyric': lambda: self.netease_api.get_lyric(music_id, cookies)
+        }
+
+        # 使用线程池并发执行
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            # 提交任务
+            future_to_key = {executor.submit(func): key for key, func in tasks.items()}
+
+            # 获取结果
+            for future in as_completed(future_to_key):
+                key = future_to_key[future]
+                try:
+                    # 设置单个请求超时时间，防止阻塞
+                    results[key] = future.result(timeout=self.config.request_timeout)
+                except Exception as e:
+                    self.logger.error(f"并发请求 {key} 失败: {e}")
+                    results[key] = None
+
+        # --- 数据组装逻辑 ---
+
+        # 1. 处理歌曲详情
+        song_info = results.get('detail')
+        if not song_info or 'songs' not in song_info or not song_info['songs']:
+            raise Exception("未找到歌曲基本信息")
+        song_data = song_info['songs'][0]
+
+        # 2. 处理播放链接
+        url_info = results.get('url')
+        url_data = {}
+        if url_info and url_info.get('data') and len(url_info['data']) > 0:
+            url_data = url_info['data'][0]
+
+        # 3. 处理歌词
+        lyric_info = results.get('lyric')
+        lrc = ''
+        tlrc = ''
+        if lyric_info:
+            lrc = lyric_info.get('lrc', {}).get('lyric', '')
+            tlrc = lyric_info.get('tlyric', {}).get('lyric', '')
+
+        # 4. 构建最终响应
+        response_data = {
+            'id': music_id,
+            'name': song_data.get('name', ''),
+            'ar_name': ', '.join(artist['name'] for artist in song_data.get('ar', [])),
+            'al_name': song_data.get('al', {}).get('name', ''),
+            'pic': song_data.get('al', {}).get('picUrl', ''),
+            'dt': song_data.get('dt', 0),
+            'publish_time': song_data.get('publishTime', 0),
+            # 链接信息
+            'url': url_data.get('url', ''),
+            'size': self._format_file_size(url_data.get('size', 0)),
+            'raw_size': url_data.get('size', 0),
+            'level': url_data.get('level', level),
+            'type': url_data.get('type', ''),
+            'br': url_data.get('br', 0),
+            # 歌词信息
+            'lyric': lrc,
+            'tlyric': tlrc
+        }
+
+        return response_data
+
 
 # 创建Flask应用和服务实例
 config = APIConfig()
@@ -382,6 +456,36 @@ def get_song_info():
         api_service.logger.error(f"获取歌曲信息异常: {e}\n{traceback.format_exc()}")
         return APIResponse.error(f"服务器错误: {str(e)}", 500)
 
+
+@app.route('/api/song/full', methods=['GET', 'POST'])
+def get_full_song_info_api():
+    """获取歌曲完整信息整合接口（并发版）"""
+    try:
+        # 获取请求参数
+        data = api_service._safe_get_request_data()
+        song_id = data.get('id')
+        level = data.get('level', 'lossless')
+
+        # 参数验证
+        if not song_id:
+            return APIResponse.error("必须提供 'id' 参数")
+
+        # 验证音质参数
+        valid_levels = ['standard', 'exhigh', 'lossless', 'hires', 'sky', 'jyeffect', 'jymaster']
+        if level not in valid_levels:
+            return APIResponse.error(f"无效的音质参数，支持: {', '.join(valid_levels)}")
+
+        music_id = api_service._extract_music_id(song_id)
+        cookies = api_service._get_cookies()
+
+        # 调用并发处理方法
+        result = api_service.get_full_song_info_concurrent(music_id, level, cookies)
+
+        return APIResponse.success(result, "获取歌曲完整信息成功")
+
+    except Exception as e:
+        api_service.logger.error(f"获取歌曲完整信息异常: {e}\n{traceback.format_exc()}")
+        return APIResponse.error(f"获取失败: {str(e)}", 500)
 
 @app.route('/search', methods=['GET', 'POST'])
 @app.route('/Search', methods=['GET', 'POST'])  # 向后兼容
