@@ -2,16 +2,13 @@
 
 <div align="center">
 
-![GitHub stars](https://img.shields.io/github/stars/Suxiaoqinx/Netease_url?style=flat-square)
-![GitHub forks](https://img.shields.io/github/forks/Suxiaoqinx/Netease_url?style=flat-square)
-![GitHub issues](https://img.shields.io/github/issues/Suxiaoqinx/Netease_url?style=flat-square)
 ![GitHub license](https://img.shields.io/github/license/Suxiaoqinx/Netease_url?style=flat-square)
 
 **功能强大的网易云音乐解析工具**
 
 支持歌曲搜索 | 单曲解析 | 歌单解析 | 专辑解析 | 音乐下载
 
-[在线体验](https://wyapi.toubiec.cn) • [使用文档](./使用文档.md) • [问题反馈](https://github.com/Suxiaoqinx/Netease_url/issues)
+[使用文档](./使用文档.md)
 
 </div>
 
@@ -56,7 +53,7 @@
 
 #### 1. 克隆项目
 ```bash
-git clone https://github.com/Suxiaoqinx/Netease_url.git
+git clone https://github.com/hunmeng/Netease_url.git
 cd Netease_url
 ```
 
@@ -273,12 +270,6 @@ Content-Type: application/json
 
 ---
 
-## 在线演示
-
-[在线解析](https://wyapi.toubiec.cn/)
-
----
-
 ## 注意事项
 
 - 必须使用黑胶会员账号的 Cookie 才能解析高音质资源。
@@ -289,16 +280,8 @@ Content-Type: application/json
 ## 致谢
 
 - [Ravizhan](https://github.com/ravizhan)
+- [Suxiaoqinx](https://github.com/Suxiaoqinx/Netease_url)
 
 ---
-
-## 反馈与交流
-
-- 在 Github [Issues](https://github.com/Suxiaoqinx/Netease_url/issues) 提交反馈
-- 或访问 [我的博客](https://www.toubiec.cn)
-
----
-
-欢迎 Star、Fork 和 PR！
 
 
