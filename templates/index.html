@@ -423,7 +423,7 @@
                     return;
                 }
                 $.ajax({
-                    url: '/Search',
+                    url: 'Search',
                     method: 'POST',
                     data: { keyword: keywords, limit: limit },
                     dataType: 'json',
@@ -472,7 +472,7 @@
                     alert('请输入歌曲ID或URL');
                     return;
                 }
-                $.post('/Song_V1', { url: songIds, level: level, type:'json' }, function(data) {
+                $.post('Song_V1', { url: songIds, level: level, type:'json' }, function(data) {
                     if (data.status === 200) {
                         $('#song_name').text(data.data.name);
                         $('#artist_names').text(data.data.ar_name);
@@ -522,7 +522,7 @@
                 // 支持直接粘贴歌单链接
                 const idMatch = pid.match(/playlist\?id=(\d+)/);
                 if (idMatch) pid = idMatch[1];
-                $.get('/Playlist', { id: pid }, function(data) {
+                $.get('Playlist', { id: pid }, function(data) {
                     if (data.status === 200) {
                         const pl = data.data.playlist;
                         $('#playlist-cover').attr('src', pl.coverImgUrl);
@@ -562,7 +562,7 @@
                 // 支持直接粘贴专辑链接
                 const idMatch = aid.match(/album\?id=(\d+)/);
                 if (idMatch) aid = idMatch[1];
-                $.get('/Album', { id: aid }, function(data) {
+                $.get('Album', { id: aid }, function(data) {
                     if (data.status === 200) {
                         const al = data.data.album;
                         $('#album-cover').attr('src', al.coverImgUrl);
@@ -615,7 +615,7 @@
                 
                 // 使用XMLHttpRequest来处理下载并获取响应头
                 const xhr = new XMLHttpRequest();
-                xhr.open('POST', '/Download', true);
+                xhr.open('POST', 'Download', true);
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
                 xhr.responseType = 'blob';
                 
