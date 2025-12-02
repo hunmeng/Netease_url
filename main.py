@@ -329,6 +329,12 @@ def index() -> str:
     """首页路由"""
     return render_template('index.html')
 
+@app.route('/robots.txt')
+def robots_txt():
+    """提供robots.txt文件，禁止搜索引擎抓取"""
+    content = "User-agent: *\nDisallow: /"
+    return Response(content, mimetype="text/plain")
+
 
 @app.route('/health', methods=['GET'])
 def health_check():
