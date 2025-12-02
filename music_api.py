@@ -508,48 +508,55 @@ class QRLoginManager:
                 raise APIException(f"生成二维码key失败: {result.get('message', '未知错误')}")
         except (json.JSONDecodeError, KeyError) as e:
             raise APIException(f"解析二维码key响应失败: {e}")
-    
-    def create_qr_login(self) -> Optional[str]:
+
+    def create_qr_login(self) -> Dict[str, Any]:
         """创建登录二维码并在控制台显示
         
         Returns:
-            成功返回unikey，失败返回None
+            包含执行结果的字典: {'success': bool, 'qr_key': str, 'message': str}
         """
         try:
             import qrcode
             
             unikey = self.generate_qr_key()
             if not unikey:
-                print("生成二维码key失败")
-                return None
-            
+                return {'success': False, 'message': '生成Key失败'}
+
             # 创建二维码
             qr = qrcode.QRCode()
             qr.add_data(f'https://music.163.com/login?codekey={unikey}')
             qr.make(fit=True)
             
             # 在控制台显示二维码
+            print("\n" + "=" * 30)
             qr.print_ascii(tty=True)
-            print("\n请使用网易云音乐APP扫描上方二维码登录")
-            return unikey
+            print("=" * 30)
+
+            return {
+                'success': True,
+                'qr_key': unikey,
+                'message': '二维码生成成功'
+            }
+
         except ImportError:
-            print("请安装qrcode库: pip install qrcode")
-            return None
+            return {'success': False, 'message': '请安装qrcode库: pip install qrcode'}
         except Exception as e:
-            print(f"创建二维码失败: {e}")
-            return None
-    
-    def check_qr_login(self, unikey: str) -> Tuple[int, Dict[str, str]]:
+            return {'success': False, 'message': f'创建二维码异常: {str(e)}'}
+
+    def check_qr_login(self, unikey: str) -> Dict[str, Any]:
         """检查二维码登录状态
         
         Args:
             unikey: 二维码key
             
         Returns:
-            (登录状态码, cookie字典)
-            
-        Raises:
-            APIException: API调用失败时抛出
+            状态字典:
+            {
+                'success': bool,
+                'status': 'waiting'|'scanned'|'success'|'expired'|'error',
+                'cookie': str,
+                'message': str
+            }
         """
         try:
             config = APIConstants.DEFAULT_CONFIG.copy()
@@ -565,42 +572,111 @@ class QRLoginManager:
             response = self.http_client.post_request_full(APIConstants.QR_LOGIN_API, params, {})
             
             result = json.loads(response.text)
-            cookie_dict = {}
-            
-            if result.get('code') == 803:
-                # 登录成功，提取cookie
-                all_cookies = response.headers.get('Set-Cookie', '').split(', ')
+            code = result.get('code')
+
+            # 构造统一的返回结构
+            response_data = {
+                'success': True,
+                'status': 'error',
+                'cookie': '',
+                'message': result.get('message', '')
+            }
+
+            if code == 800:
+                response_data['status'] = 'expired'
+                response_data['message'] = '二维码已过期'
+            elif code == 801:
+                response_data['status'] = 'waiting'
+                response_data['message'] = '等待扫码'
+            elif code == 802:
+                response_data['status'] = 'scanned'
+                response_data['message'] = '已扫码，等待确认'
+            elif code == 803:
+                response_data['status'] = 'success'
+                response_data['message'] = '授权登录成功'
+                # 提取cookie
+                cookie_parts = []
+                all_cookies = response.headers.get('Set-Cookie', '').split(',')  # 注意这里可能是逗号分隔
+
+                # 简单的Cookie合并逻辑
+                final_cookies = {}
                 for cookie_str in all_cookies:
-                    if 'MUSIC_U=' in cookie_str:
-                        cookie_dict['MUSIC_U'] = cookie_str.split('MUSIC_U=')[1].split(';')[0]
-            
-            return result.get('code', -1), cookie_dict
+                    parts = cookie_str.strip().split(';')
+                    for part in parts:
+                        if '=' in part:
+                            k, v = part.strip().split('=', 1)
+                            # 保留核心Cookie
+                            if k in ['MUSIC_U', '__csrf', 'NMTID', 'MUSIC_A']:
+                                final_cookies[k] = v
+
+                # 确保包含必要字段
+                cookie_string = '; '.join([f"{k}={v}" for k, v in final_cookies.items()])
+
+                # 如果没有解析出MUSIC_U，尝试原始逻辑
+                if 'MUSIC_U' not in final_cookies and 'MUSIC_U' in response.headers.get('Set-Cookie', ''):
+                    raw_cookie = response.headers.get('Set-Cookie', '')
+                    # 粗暴提取作为兜底
+                    import re
+                    match = re.search(r'MUSIC_U=([^;]+)', raw_cookie)
+                    if match:
+                        cookie_string += f"; MUSIC_U={match.group(1)}"
+
+                response_data['cookie'] = f"{cookie_string}; os=pc; appver=8.9.70;"
+
+            else:
+                response_data['status'] = 'error'
+                response_data['success'] = False
+                response_data['message'] = f'未知状态码: {code}'
+
+            return response_data
+
         except (json.JSONDecodeError, KeyError) as e:
-            raise APIException(f"解析登录状态响应失败: {e}")
-    
+            return {
+                'success': False,
+                'status': 'error',
+                'message': f"解析登录状态响应失败: {e}"
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'status': 'error',
+                'message': f"检查登录状态异常: {e}"
+            }
+
     def qr_login(self) -> Optional[str]:
-        """完整的二维码登录流程
-        
+        """完整的二维码登录流程（向后兼容旧版调用）
+
         Returns:
             成功返回cookie字符串，失败返回None
         """
         try:
-            unikey = self.create_qr_login()
-            if not unikey:
+            result = self.create_qr_login()
+            if not result['success']:
+                print(f"创建二维码失败: {result.get('message')}")
                 return None
-            
+
+            unikey = result['qr_key']
+
             while True:
-                code, cookies = self.check_qr_login(unikey)
-                
-                if code == 803:
+                status_res = self.check_qr_login(unikey)
+                if not status_res['success']:
+                    print(f"\n检查状态出错: {status_res.get('message')}")
+                    return None
+
+                status = status_res['status']
+
+                if status == 'success':
                     print("\n登录成功！")
-                    return f"MUSIC_U={cookies['MUSIC_U']};os=pc;appver=8.9.70;"
-                elif code == 801:
+                    return status_res['cookie']
+                elif status == 'waiting':
                     print("\r等待扫码...", end='')
-                elif code == 802:
+                elif status == 'scanned':
                     print("\r扫码成功，请在手机上确认登录...", end='')
+                elif status == 'expired':
+                    print("\n二维码已过期")
+                    return None
                 else:
-                    print(f"\n登录失败，错误码：{code}")
+                    print(f"\n登录失败: {status_res.get('message')}")
                     return None
                 
                 time.sleep(2)
