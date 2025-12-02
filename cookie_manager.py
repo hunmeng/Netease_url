@@ -50,11 +50,11 @@ class CookieManager:
         # 网易云音乐相关的重要Cookie字段
         self.important_cookies = {
             'MUSIC_U',      # 用户标识
-            'MUSIC_A',      # 用户认证
+            # 'MUSIC_A',      # 用户认证
             '__csrf',       # CSRF令牌
             'NMTID',        # 设备标识
-            'WEVNSM',       # 会话管理
-            'WNMCID',       # 客户端标识
+            # 'WEVNSM',       # 会话管理
+            # 'WNMCID',       # 客户端标识
         }
         
         # 确保cookie文件存在

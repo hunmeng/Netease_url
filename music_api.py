@@ -529,7 +529,13 @@ class QRLoginManager:
             
             # 在控制台显示二维码
             print("\n" + "=" * 30)
-            qr.print_ascii(tty=True)
+            try:
+                # 尝试使用 tty=True (在标准终端下显示效果更好)
+                qr.print_ascii(tty=True)
+            except Exception:
+                # 如果环境不支持 TTY (报错 Not a tty)，则回退到普通字符模式
+                # invert=True 通常能生成在黑底白字控制台可见的块状字符
+                qr.print_ascii(tty=False, invert=True)
             print("=" * 30)
 
             return {
@@ -594,34 +600,49 @@ class QRLoginManager:
             elif code == 803:
                 response_data['status'] = 'success'
                 response_data['message'] = '授权登录成功'
-                # 提取cookie
-                cookie_parts = []
-                all_cookies = response.headers.get('Set-Cookie', '').split(',')  # 注意这里可能是逗号分隔
 
-                # 简单的Cookie合并逻辑
+                # --- 优化后的Cookie提取逻辑 (开始) ---
                 final_cookies = {}
-                for cookie_str in all_cookies:
-                    parts = cookie_str.strip().split(';')
-                    for part in parts:
-                        if '=' in part:
-                            k, v = part.strip().split('=', 1)
-                            # 保留核心Cookie
-                            if k in ['MUSIC_U', '__csrf', 'NMTID', 'MUSIC_A']:
+
+                # 1. 尝试从 Set-Cookie 响应头解析
+                all_cookies_str = response.headers.get('Set-Cookie', '')
+                # 处理可能存在的多个Set-Cookie合并情况（Requests库有时会合并）
+                # 简单的分割并不完美，但足以应对网易云的格式
+                parts = all_cookies_str.split(',')
+
+                for part in parts:
+                    sub_parts = part.strip().split(';')
+                    for sub in sub_parts:
+                        if '=' in sub:
+                            k, v = sub.strip().split('=', 1)
+                            k = k.strip()
+                            # 排除像 'Path', 'Expires', 'Domain' 这样的属性关键字
+                            if k.lower() not in ['path', 'expires', 'domain', 'max-age', 'httponly', 'secure',
+                                                 'samesite']:
                                 final_cookies[k] = v
 
-                # 确保包含必要字段
-                cookie_string = '; '.join([f"{k}={v}" for k, v in final_cookies.items()])
-
-                # 如果没有解析出MUSIC_U，尝试原始逻辑
-                if 'MUSIC_U' not in final_cookies and 'MUSIC_U' in response.headers.get('Set-Cookie', ''):
-                    raw_cookie = response.headers.get('Set-Cookie', '')
-                    # 粗暴提取作为兜底
+                # 2. 兜底：如果没解析出 MUSIC_U，尝试正则暴力提取
+                if 'MUSIC_U' not in final_cookies:
                     import re
-                    match = re.search(r'MUSIC_U=([^;]+)', raw_cookie)
+                    match = re.search(r'MUSIC_U=([^;,\s]+)', all_cookies_str)
                     if match:
-                        cookie_string += f"; MUSIC_U={match.group(1)}"
+                        final_cookies['MUSIC_U'] = match.group(1)
 
-                response_data['cookie'] = f"{cookie_string}; os=pc; appver=8.9.70;"
+                # 3. 补充客户端默认 Cookie (模拟 PC 端行为)
+                defaults = {
+                    'os': 'pc',
+                    'appver': '8.9.70',
+                    'osver': 'Microsoft-Windows-10-Professional-build-19044-64bit',
+                    'channel': 'netease'
+                }
+                for k, v in defaults.items():
+                    if k not in final_cookies:
+                        final_cookies[k] = v
+
+                # 4. 组装最终字符串
+                cookie_string = '; '.join([f"{k}={v}" for k, v in final_cookies.items()])
+                response_data['cookie'] = cookie_string
+                # --- 优化后的Cookie提取逻辑 (结束) ---
 
             else:
                 response_data['status'] = 'error'
